@@ -1,0 +1,16 @@
+{
+  "tests": [
+    {
+      "name": "Get users list",
+      "method": "GET",
+      "queryStringParameters": {
+        "admin_id": "1"
+      },
+      "expectedStatus": 200,
+      "expectedBody": {
+        "users": "array"
+      },
+      "bodyMatcher": "partial"
+    }
+  ]
+}

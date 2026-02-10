@@ -1,48 +1,82 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import Icon from '@/components/ui/icon';
+import { useToast } from '@/hooks/use-toast';
+
+const API_URLS = {
+  auth: 'https://functions.poehali.dev/3aa3a8d2-139f-41a8-9d22-1c3edb579cd5',
+  api: 'https://functions.poehali.dev/62068459-9fcd-453d-bfbd-51a356676e22',
+  chat: 'https://functions.poehali.dev/98ece30b-d459-480d-b5bb-3cbaf97a30e9',
+  admin: 'https://functions.poehali.dev/b80bc515-7971-430e-8083-5237a4f474e1'
+};
 
 type Page = 'home' | 'titles' | 'quests' | 'chat' | 'profile' | 'admin';
 
-const titles = [
-  { id: 1, name: '[NEWBIE]', price: 0, color: 'text-gray-400', owned: true },
-  { id: 2, name: '[VIP]', price: 500, color: 'text-yellow-400', owned: false },
-  { id: 3, name: '[ADMIN]', price: 1000, color: 'text-red-500', owned: false },
-  { id: 4, name: '[SNIPER]', price: 750, color: 'text-green-400', owned: false },
-  { id: 5, name: '[LEGEND]', price: 1500, color: 'text-purple-500', owned: false },
-  { id: 6, name: '[KING]', price: 2000, color: 'text-yellow-300', owned: false },
-  { id: 7, name: '[TASK-MASTER]', price: 1200, color: 'text-blue-400', owned: false },
-  { id: 8, name: '[CHEATER]', price: 666, color: 'text-red-400', owned: false },
-  { id: 9, name: '[CREATOR]', price: 3000, color: 'text-cyan-400', owned: false },
-  { id: 10, name: '[COLLAB]', price: 800, color: 'text-pink-400', owned: false },
-  { id: 11, name: '[SAF ADMIN]', price: 1800, color: 'text-orange-400', owned: false },
-  { id: 12, name: '[SAT ADMIN]', price: 1800, color: 'text-indigo-400', owned: false },
-  { id: 13, name: '[TROLLER]', price: 900, color: 'text-lime-400', owned: false },
-];
+interface User {
+  id: number;
+  username: string;
+  coins: number;
+  is_admin: boolean;
+}
 
-const quests = [
-  { id: 1, title: 'Первый визит', description: 'Зайдите на сайт', reward: 10, completed: true, progress: 100 },
-  { id: 2, title: 'Проведи 15 минут', description: 'Проведите на сайте 15 минут', reward: 50, completed: false, progress: 40 },
-  { id: 3, title: 'Поболтай в чате', description: 'Отправьте 10 сообщений в чате', reward: 30, completed: false, progress: 0 },
-  { id: 4, title: 'Купи первый титул', description: 'Приобретите любой титул', reward: 100, completed: false, progress: 0 },
-  { id: 5, title: 'Коллекционер', description: 'Купите 5 титулов', reward: 250, completed: false, progress: 0 },
-  { id: 6, title: 'Активный участник', description: 'Отправьте 50 сообщений', reward: 150, completed: false, progress: 0 },
-  { id: 7, title: 'Ночной игрок', description: 'Зайдите на сайт в 3:00 ночи', reward: 200, completed: false, progress: 0 },
-  { id: 8, title: 'Недельная серия', description: 'Заходите 7 дней подряд', reward: 300, completed: false, progress: 0 },
-  { id: 9, title: 'Марафонец', description: 'Проведите на сайте 5 часов', reward: 500, completed: false, progress: 0 },
-  { id: 10, title: 'Социальная бабочка', description: 'Напишите 100 сообщений', reward: 400, completed: false, progress: 0 },
-];
+interface Title {
+  id: number;
+  name: string;
+  price: number;
+  color: string;
+  is_limited: boolean;
+  owned: boolean;
+}
+
+interface Quest {
+  id: number;
+  title: string;
+  description: string;
+  reward: number;
+  progress: number;
+  completed: boolean;
+}
+
+interface ChatMessage {
+  id: number;
+  message: string;
+  username: string;
+  user_id: number;
+  created_at: string;
+}
 
 export default function Index() {
   const [currentPage, setCurrentPage] = useState<Page>('home');
-  const [coins, setCoins] = useState(10);
+  const [user, setUser] = useState<User | null>(null);
+  const [showAuth, setShowAuth] = useState(true);
+  const [isLogin, setIsLogin] = useState(true);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [titles, setTitles] = useState<Title[]>([]);
+  const [quests, setQuests] = useState<Quest[]>([]);
+  const [selectedTitle, setSelectedTitle] = useState<Title | null>(null);
+  const [showBuyDialog, setShowBuyDialog] = useState(false);
+  const [showSellDialog, setShowSellDialog] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [adminUsers, setAdminUsers] = useState<any[]>([]);
+  const [selectedUser, setSelectedUser] = useState<any>(null);
+  const [coinsInput, setCoinsInput] = useState('');
+  const [dailyStreak, setDailyStreak] = useState(0);
+  const [canClaimDaily, setCanClaimDaily] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
 
   const FloatingEmoji = ({ emoji, delay }: { emoji: string; delay: number }) => (
     <div
-      className="absolute text-6xl opacity-20 animate-float-slow pointer-events-none"
+      className="absolute text-6xl opacity-20 animate-float-slow pointer-events-none user-select-none"
       style={{
         top: `${Math.random() * 80}%`,
         left: `${Math.random() * 90}%`,
@@ -52,6 +86,359 @@ export default function Index() {
       {emoji}
     </div>
   );
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem('chicken_user');
+    if (storedUser) {
+      const parsedUser = JSON.parse(storedUser);
+      setUser(parsedUser);
+      setShowAuth(false);
+      loadUserData(parsedUser.id);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (currentPage === 'chat' && user) {
+      loadChat();
+      const interval = setInterval(loadChat, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [currentPage, user]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
+
+  const loadUserData = async (userId: number) => {
+    try {
+      const response = await fetch(`${API_URLS.api}?action=profile&user_id=${userId}`);
+      const data = await response.json();
+      
+      setUser(data.user);
+      setTitles(data.titles);
+      setQuests(data.quests);
+      setDailyStreak(data.daily_streak);
+      setCanClaimDaily(data.can_claim_daily);
+    } catch (error) {
+      console.error('Error loading user data:', error);
+    }
+  };
+
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    try {
+      const response = await fetch(API_URLS.auth, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: isLogin ? 'login' : 'register',
+          username,
+          password
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        setUser(data.user);
+        localStorage.setItem('chicken_user', JSON.stringify(data.user));
+        setShowAuth(false);
+        loadUserData(data.user.id);
+        toast({
+          title: isLogin ? 'Вход выполнен!' : 'Регистрация успешна!',
+          description: `Добро пожаловать, ${data.user.username}!`
+        });
+      } else {
+        toast({
+          title: 'Ошибка',
+          description: data.error,
+          variant: 'destructive'
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'Ошибка',
+        description: 'Не удалось подключиться к серверу',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const handleBuyTitle = async () => {
+    if (!selectedTitle || !user) return;
+    
+    try {
+      const response = await fetch(API_URLS.api, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'buy_title',
+          user_id: user.id,
+          title_id: selectedTitle.id
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        toast({
+          title: 'Успешно!',
+          description: data.message
+        });
+        setUser({ ...user, coins: data.new_coins });
+        loadUserData(user.id);
+        setShowBuyDialog(false);
+      } else {
+        toast({
+          title: 'Ошибка',
+          description: data.error,
+          variant: 'destructive'
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'Ошибка',
+        description: 'Не удалось купить титул',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const handleSellTitle = async () => {
+    if (!selectedTitle || !user) return;
+    
+    try {
+      const response = await fetch(API_URLS.api, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'sell_title',
+          user_id: user.id,
+          title_id: selectedTitle.id
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        toast({
+          title: 'Успешно!',
+          description: data.message
+        });
+        setUser({ ...user, coins: data.new_coins });
+        loadUserData(user.id);
+        setShowSellDialog(false);
+      } else {
+        toast({
+          title: 'Ошибка',
+          description: data.error,
+          variant: 'destructive'
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'Ошибка',
+        description: 'Не удалось продать титул',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const handleClaimDaily = async () => {
+    if (!user) return;
+    
+    try {
+      const response = await fetch(API_URLS.api, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'claim_daily',
+          user_id: user.id
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        toast({
+          title: 'Ежедневная награда!',
+          description: data.message
+        });
+        setUser({ ...user, coins: data.new_coins });
+        loadUserData(user.id);
+      } else {
+        toast({
+          title: 'Ошибка',
+          description: data.error,
+          variant: 'destructive'
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'Ошибка',
+        description: 'Не удалось получить награду',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const loadChat = async () => {
+    try {
+      const response = await fetch(`${API_URLS.chat}?limit=50`);
+      const data = await response.json();
+      setChatMessages(data.messages);
+    } catch (error) {
+      console.error('Error loading chat:', error);
+    }
+  };
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim() || !user) return;
+    
+    try {
+      const response = await fetch(API_URLS.chat, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: user.id,
+          message: chatInput
+        })
+      });
+      
+      if (response.ok) {
+        setChatInput('');
+        loadChat();
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+    }
+  };
+
+  const loadAdminData = async () => {
+    if (!user) return;
+    
+    try {
+      const response = await fetch(`${API_URLS.admin}?admin_id=${user.id}`);
+      const data = await response.json();
+      
+      if (response.ok) {
+        setAdminUsers(data.users);
+      }
+    } catch (error) {
+      console.error('Error loading admin data:', error);
+    }
+  };
+
+  const handleGiveCoins = async () => {
+    if (!user || !selectedUser || !coinsInput) return;
+    
+    try {
+      const response = await fetch(API_URLS.admin, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          admin_id: user.id,
+          user_id: selectedUser.id,
+          coins: parseInt(coinsInput)
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (response.ok) {
+        toast({
+          title: 'Успешно!',
+          description: data.message
+        });
+        loadAdminData();
+        setCoinsInput('');
+      } else {
+        toast({
+          title: 'Ошибка',
+          description: data.error,
+          variant: 'destructive'
+        });
+      }
+    } catch (error) {
+      toast({
+        title: 'Ошибка',
+        description: 'Не удалось выдать монеты',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (currentPage === 'admin' && user?.is_admin) {
+      loadAdminData();
+      const interval = setInterval(loadAdminData, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [currentPage, user]);
+
+  if (showAuth) {
+    return (
+      <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center p-4 relative overflow-hidden">
+        <FloatingEmoji emoji="👑" delay={0} />
+        <FloatingEmoji emoji="⭐" delay={2} />
+        <FloatingEmoji emoji="🏆" delay={4} />
+        
+        <Card className="glass border-primary/30 w-full max-w-md">
+          <CardHeader>
+            <CardTitle className="text-3xl font-bold neon-text text-primary text-center">
+              ЧикенТитул
+            </CardTitle>
+            <CardDescription className="text-center">
+              {isLogin ? 'Войдите в аккаунт' : 'Создайте аккаунт'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleAuth} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="username">Имя пользователя</Label>
+                <Input
+                  id="username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder="Введите имя"
+                  required
+                  minLength={3}
+                  className="glass"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">Пароль</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Введите пароль"
+                  required
+                  className="glass"
+                />
+              </div>
+              <Button type="submit" className="w-full neon-border">
+                {isLogin ? 'Войти' : 'Зарегистрироваться'}
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full"
+                onClick={() => setIsLogin(!isLogin)}
+              >
+                {isLogin ? 'Нет аккаунта? Зарегистрируйтесь' : 'Есть аккаунт? Войдите'}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (!user) return null;
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-foreground relative overflow-hidden">
@@ -69,9 +456,19 @@ export default function Index() {
             <div className="flex items-center gap-4">
               <div className="glass px-4 py-2 rounded-lg flex items-center gap-2">
                 <span className="text-2xl">💰</span>
-                <span className="font-bold text-xl text-primary">{coins}</span>
+                <span className="font-bold text-xl text-primary">{user.coins}</span>
                 <span className="text-sm text-muted-foreground">ТитулКоинов</span>
               </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  localStorage.removeItem('chicken_user');
+                  window.location.reload();
+                }}
+              >
+                <Icon name="LogOut" className="h-4 w-4" />
+              </Button>
             </div>
           </div>
           <div className="flex gap-2 mt-4 flex-wrap">
@@ -115,14 +512,16 @@ export default function Index() {
               <Icon name="User" className="mr-2 h-4 w-4" />
               Профиль
             </Button>
-            <Button
-              variant={currentPage === 'admin' ? 'default' : 'outline'}
-              onClick={() => setCurrentPage('admin')}
-              className="neon-border"
-            >
-              <Icon name="Shield" className="mr-2 h-4 w-4" />
-              Админ
-            </Button>
+            {user.is_admin && (
+              <Button
+                variant={currentPage === 'admin' ? 'default' : 'outline'}
+                onClick={() => setCurrentPage('admin')}
+                className="neon-border"
+              >
+                <Icon name="Shield" className="mr-2 h-4 w-4" />
+                Админ
+              </Button>
+            )}
           </div>
         </div>
       </nav>
@@ -143,6 +542,26 @@ export default function Index() {
               </p>
             </div>
 
+            {canClaimDaily && (
+              <Card className="glass border-accent/50 max-w-md mx-auto">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-accent">
+                    <Icon name="Gift" className="h-6 w-6" />
+                    Ежедневная награда!
+                  </CardTitle>
+                  <CardDescription>
+                    День {dailyStreak + 1} подряд. Получите награду!
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button onClick={handleClaimDaily} className="w-full neon-border">
+                    <Icon name="Star" className="mr-2 h-4 w-4" />
+                    Получить награду
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
             <div className="grid md:grid-cols-3 gap-6">
               <Card className="glass border-primary/30">
                 <CardHeader>
@@ -150,11 +569,13 @@ export default function Index() {
                     <Icon name="Trophy" className="h-6 w-6" />
                     Титулы
                   </CardTitle>
-                  <CardDescription>13 уникальных титулов</CardDescription>
+                  <CardDescription>15 уникальных титулов</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-4xl font-bold text-center text-primary neon-text">13</p>
-                  <p className="text-center text-muted-foreground mt-2">доступных титулов</p>
+                  <p className="text-4xl font-bold text-center text-primary neon-text">
+                    {titles.filter(t => t.owned).length}/{titles.length}
+                  </p>
+                  <p className="text-center text-muted-foreground mt-2">куплено</p>
                 </CardContent>
               </Card>
 
@@ -168,23 +589,25 @@ export default function Index() {
                 </CardHeader>
                 <CardContent>
                   <p className="text-4xl font-bold text-center text-secondary neon-text">
-                    {quests.length}
+                    {quests.filter(q => q.completed).length}/{quests.length}
                   </p>
-                  <p className="text-center text-muted-foreground mt-2">активных квестов</p>
+                  <p className="text-center text-muted-foreground mt-2">выполнено</p>
                 </CardContent>
               </Card>
 
               <Card className="glass border-accent/30">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-accent">
-                    <Icon name="Users" className="h-6 w-6" />
-                    Сообщество
+                    <Icon name="Calendar" className="h-6 w-6" />
+                    Серия дней
                   </CardTitle>
-                  <CardDescription>Общайся в чате</CardDescription>
+                  <CardDescription>Заходи каждый день</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-4xl font-bold text-center text-accent neon-text">∞</p>
-                  <p className="text-center text-muted-foreground mt-2">игроков онлайн</p>
+                  <p className="text-4xl font-bold text-center text-accent neon-text">
+                    {dailyStreak}
+                  </p>
+                  <p className="text-center text-muted-foreground mt-2">дней подряд</p>
                 </CardContent>
               </Card>
             </div>
@@ -218,21 +641,43 @@ export default function Index() {
                           <span className="font-bold text-xl">{title.price}</span>
                         </div>
                       )}
+                      {title.is_limited && (
+                        <Badge variant="outline" className="border-accent text-accent ml-2">
+                          Лимитированный
+                        </Badge>
+                      )}
                     </CardDescription>
                   </CardHeader>
-                  <CardContent>
-                    {!title.owned && (
+                  <CardContent className="space-y-2">
+                    {!title.owned && title.price > 0 && (
                       <Button
                         className="w-full neon-border"
                         variant="outline"
-                        disabled={coins < title.price}
+                        disabled={user.coins < title.price}
+                        onClick={() => {
+                          setSelectedTitle(title);
+                          setShowBuyDialog(true);
+                        }}
                       >
                         <Icon name="ShoppingCart" className="mr-2 h-4 w-4" />
                         Купить
                       </Button>
                     )}
+                    {title.owned && title.name !== '[NEWBIE]' && (
+                      <Button
+                        className="w-full neon-border"
+                        variant="outline"
+                        onClick={() => {
+                          setSelectedTitle(title);
+                          setShowSellDialog(true);
+                        }}
+                      >
+                        <Icon name="DollarSign" className="mr-2 h-4 w-4" />
+                        Продать за {Math.floor(title.price / 2)}
+                      </Button>
+                    )}
                     {title.owned && (
-                      <div className="text-center text-muted-foreground">
+                      <div className="text-center text-muted-foreground text-sm">
                         Можно копировать: <span className={title.color}>{title.name}</span>
                       </div>
                     )}
@@ -294,7 +739,7 @@ export default function Index() {
         )}
 
         {currentPage === 'chat' && (
-          <Card className="glass border-primary/30">
+          <Card className="glass border-primary/30 h-[70vh] flex flex-col">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-primary">
                 <Icon name="MessageCircle" className="h-6 w-6" />
@@ -302,18 +747,51 @@ export default function Index() {
               </CardTitle>
               <CardDescription>Общайся с другими игроками</CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="text-center text-muted-foreground py-12">
-                <Icon name="Construction" className="h-12 w-12 mx-auto mb-4" />
-                <p>Чат в разработке</p>
-                <p className="text-sm">Скоро здесь появится общение в реальном времени!</p>
-              </div>
+            <CardContent className="flex-1 flex flex-col min-h-0">
+              <ScrollArea className="flex-1 pr-4">
+                <div className="space-y-4">
+                  {chatMessages.map((msg) => (
+                    <div
+                      key={msg.id}
+                      className={`glass p-3 rounded-lg ${
+                        msg.user_id === user.id ? 'ml-auto bg-primary/10' : 'mr-auto'
+                      } max-w-[80%]`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-bold text-sm text-primary">
+                          {msg.username}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {new Date(msg.created_at).toLocaleTimeString('ru-RU', {
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </span>
+                      </div>
+                      <p className="text-sm">{msg.message}</p>
+                    </div>
+                  ))}
+                  <div ref={chatEndRef} />
+                </div>
+              </ScrollArea>
+              <form onSubmit={handleSendMessage} className="mt-4 flex gap-2">
+                <Input
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  placeholder="Напишите сообщение..."
+                  className="glass"
+                  maxLength={500}
+                />
+                <Button type="submit" className="neon-border">
+                  <Icon name="Send" className="h-4 w-4" />
+                </Button>
+              </form>
             </CardContent>
           </Card>
         )}
 
         {currentPage === 'profile' && (
-          <Card className="glass border-primary/30">
+          <Card className="glass border-primary/30 max-w-2xl mx-auto">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-primary">
                 <Icon name="User" className="h-6 w-6" />
@@ -321,35 +799,224 @@ export default function Index() {
               </CardTitle>
               <CardDescription>Ваш игровой профиль</CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="text-center text-muted-foreground py-12">
-                <Icon name="Construction" className="h-12 w-12 mx-auto mb-4" />
-                <p>Система профилей в разработке</p>
-                <p className="text-sm">Скоро здесь будут ваши статистика и достижения!</p>
+            <CardContent className="space-y-6">
+              <div className="space-y-2">
+                <Label>Имя пользователя</Label>
+                <div className="glass p-3 rounded-lg">
+                  <p className="text-lg font-bold text-primary">{user.username}</p>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>ТитулКоины</Label>
+                  <div className="glass p-3 rounded-lg text-center">
+                    <p className="text-2xl font-bold text-primary neon-text">{user.coins}</p>
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <Label>Серия дней</Label>
+                  <div className="glass p-3 rounded-lg text-center">
+                    <p className="text-2xl font-bold text-accent neon-text">{dailyStreak}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Титулы ({titles.filter(t => t.owned).length}/{titles.length})</Label>
+                <div className="glass p-4 rounded-lg flex flex-wrap gap-2">
+                  {titles.filter(t => t.owned).map(title => (
+                    <Badge key={title.id} variant="outline" className={`${title.color} border-current`}>
+                      {title.name}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Прогресс квестов</Label>
+                <div className="glass p-4 rounded-lg">
+                  <p className="text-lg">
+                    Выполнено: <span className="font-bold text-primary">{quests.filter(q => q.completed).length}</span> из {quests.length}
+                  </p>
+                  <Progress 
+                    value={(quests.filter(q => q.completed).length / quests.length) * 100} 
+                    className="mt-2 h-3"
+                  />
+                </div>
               </div>
             </CardContent>
           </Card>
         )}
 
-        {currentPage === 'admin' && (
+        {currentPage === 'admin' && user.is_admin && (
           <Card className="glass border-red-500/30">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-red-500">
                 <Icon name="Shield" className="h-6 w-6" />
                 Админ-панель
               </CardTitle>
-              <CardDescription>Управление системой</CardDescription>
+              <CardDescription>Управление пользователями и монетами</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="text-center text-muted-foreground py-12">
-                <Icon name="Construction" className="h-12 w-12 mx-auto mb-4" />
-                <p>Админ-панель в разработке</p>
-                <p className="text-sm">Скоро здесь будет управление пользователями и монетами!</p>
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-bold mb-2">Онлайн пользователи</h3>
+                  <div className="space-y-2">
+                    {adminUsers.filter(u => u.is_online).map(u => (
+                      <div key={u.id} className="glass p-3 rounded-lg flex items-center justify-between">
+                        <div>
+                          <p className="font-bold">{u.username}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {u.coins} ТитулКоинов
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="border-green-500 text-green-500">
+                          <Icon name="Circle" className="h-2 w-2 mr-1 fill-current" />
+                          Онлайн
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-lg font-bold mb-2">Все пользователи</h3>
+                  <div className="space-y-2">
+                    {adminUsers.map(u => (
+                      <div key={u.id} className="glass p-3 rounded-lg">
+                        <div className="flex items-center justify-between mb-2">
+                          <div>
+                            <p className="font-bold">{u.username}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {u.coins} ТитулКоинов
+                            </p>
+                          </div>
+                          {u.is_online && (
+                            <Badge variant="outline" className="border-green-500 text-green-500">
+                              Онлайн
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          <Input
+                            type="number"
+                            placeholder="Количество монет"
+                            value={selectedUser?.id === u.id ? coinsInput : ''}
+                            onChange={(e) => {
+                              setSelectedUser(u);
+                              setCoinsInput(e.target.value);
+                            }}
+                            className="glass"
+                          />
+                          <Button
+                            onClick={() => {
+                              setSelectedUser(u);
+                              handleGiveCoins();
+                            }}
+                            className="neon-border"
+                            disabled={!coinsInput || selectedUser?.id !== u.id}
+                          >
+                            Выдать
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
         )}
       </main>
+
+      <Dialog open={showBuyDialog} onOpenChange={setShowBuyDialog}>
+        <DialogContent className="glass border-primary/30">
+          <DialogHeader>
+            <DialogTitle className="text-2xl neon-text text-primary">
+              Покупка титула
+            </DialogTitle>
+            <DialogDescription className="user-select-none">
+              Вы хотите приобрести этот титул?
+            </DialogDescription>
+          </DialogHeader>
+          {selectedTitle && (
+            <div className="space-y-4">
+              <div className="glass p-4 rounded-lg text-center user-select-none">
+                <p className={`text-3xl font-bold ${selectedTitle.color} neon-text mb-2`}>
+                  ████████
+                </p>
+                <div className="flex items-center justify-center gap-2">
+                  <span className="text-2xl">💰</span>
+                  <span className="text-xl font-bold">{selectedTitle.price} ТитулКоинов</span>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setShowBuyDialog(false)}
+                >
+                  Отмена
+                </Button>
+                <Button
+                  className="flex-1 neon-border"
+                  onClick={handleBuyTitle}
+                  disabled={user.coins < selectedTitle.price}
+                >
+                  <Icon name="ShoppingCart" className="mr-2 h-4 w-4" />
+                  Купить
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showSellDialog} onOpenChange={setShowSellDialog}>
+        <DialogContent className="glass border-primary/30">
+          <DialogHeader>
+            <DialogTitle className="text-2xl neon-text text-primary">
+              Продажа титула
+            </DialogTitle>
+            <DialogDescription>
+              Вы получите {selectedTitle && Math.floor(selectedTitle.price / 2)} ТитулКоинов
+            </DialogDescription>
+          </DialogHeader>
+          {selectedTitle && (
+            <div className="space-y-4">
+              <div className="glass p-4 rounded-lg text-center">
+                <p className={`text-3xl font-bold ${selectedTitle.color} neon-text mb-2`}>
+                  {selectedTitle.name}
+                </p>
+                <div className="flex items-center justify-center gap-2">
+                  <span className="text-2xl">💰</span>
+                  <span className="text-xl font-bold">
+                    +{Math.floor(selectedTitle.price / 2)} ТитулКоинов
+                  </span>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setShowSellDialog(false)}
+                >
+                  Отмена
+                </Button>
+                <Button
+                  className="flex-1 neon-border"
+                  onClick={handleSellTitle}
+                >
+                  <Icon name="DollarSign" className="mr-2 h-4 w-4" />
+                  Продать
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
